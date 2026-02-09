@@ -190,3 +190,48 @@ jobs:
           artifacts: lightpanda-${{ env.ARCH }}-${{ env.OS }}
           tag: ${{ env.RELEASE }}
           makeLatest: true
+
+  build-windows-x86_64:
+    env:
+      ARCH: x86_64
+      OS: windows
+
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - uses: ./.github/actions/install
+        with:
+          os: ${{env.OS}}
+          arch: ${{env.ARCH}}
+
+      - name: v8 snapshot
+        shell: bash
+        run: zig build -Dprebuilt_v8_path=v8/libc_v8.a -Doptimize=ReleaseFast snapshot_creator -- src/snapshot.bin
+
+      - name: zig build
+        shell: bash
+        run: zig build -Dsnapshot_path=../../snapshot.bin -Dprebuilt_v8_path=v8/libc_v8.a -Doptimize=ReleaseFast -Dcpu=x86_64 -Dgit_commit=$(git rev-parse --short ${{ github.sha }})
+
+      - name: Rename binary
+        shell: bash
+        run: mv zig-out/bin/lightpanda.exe lightpanda-${{ env.ARCH }}-${{ env.OS }}.exe
+
+      - name: upload on s3
+        shell: bash
+        run: |
+          DIR=$(git show --no-patch --no-notes --pretty='%cs_%h')
+          aws s3 cp --storage-class=GLACIER_IR lightpanda-${{ env.ARCH }}-${{ env.OS }}.exe s3://lpd-nightly-build/${DIR}/lightpanda-${{ env.ARCH }}-${{ env.OS }}.exe
+
+      - name: Upload the build
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: lightpanda-${{ env.ARCH }}-${{ env.OS }}.exe
+          tag: ${{ env.RELEASE }}
+          makeLatest: true
